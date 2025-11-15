@@ -20,16 +20,13 @@ class ShopAnalytics_Data_Exporter {
         header( 'Content-Type: text/csv' );
         header( 'Content-Disposition: attachment; filename="' . sanitize_file_name( $filename ) . '"' );
 
-        $output = fopen( 'php://output', 'w' );
         if ( $headers ) {
-            fputcsv( $output, $headers );
+            echo implode(',', array_map('esc_html', $headers)) . "\n";
         }
 
         foreach ( $rows as $row ) {
-            fputcsv( $output, $row );
+            echo implode(',', array_map('esc_html', $row)) . "\n";
         }
-
-        fclose( $output );
         exit;
     }
 }

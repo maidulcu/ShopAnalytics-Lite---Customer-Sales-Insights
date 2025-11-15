@@ -8,4 +8,3 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 delete_option( 'shopanalytics_lite_do_activation_redirect' );
 delete_option( 'shopanalytics_lite_settings' );
 delete_site_option( 'shopanalytics_lite_network_option' );
-?>

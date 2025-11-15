@@ -24,11 +24,11 @@ function shopanalytics_get_date_range( $from = null, $to = null ) {
     $range = [];
 
     if ( $from ) {
-        $range['after'] = date( 'Y-m-d 00:00:00', strtotime( $from ) );
+        $range['after'] = gmdate( 'Y-m-d 00:00:00', strtotime( $from ) );
     }
 
     if ( $to ) {
-        $range['before'] = date( 'Y-m-d 23:59:59', strtotime( $to ) );
+        $range['before'] = gmdate( 'Y-m-d 23:59:59', strtotime( $to ) );
     }
 
     return $range;
@@ -72,7 +72,7 @@ function shopanalytics_build_order_query_args( $from = null, $to = null ) {
         try {
             $args['date_created_after'] = ( new \WC_DateTime( $from ) )->format( DATE_ATOM );
         } catch ( Exception $e ) {
-            error_log( '[ShopAnalytics] Invalid "from" date: ' . print_r( $from, true ) );
+            // Invalid date format, skip
         }
     }
 
@@ -80,7 +80,7 @@ function shopanalytics_build_order_query_args( $from = null, $to = null ) {
         try {
             $args['date_created_before'] = ( new \WC_DateTime( $to ) )->format( DATE_ATOM );
         } catch ( Exception $e ) {
-            error_log( '[ShopAnalytics] Invalid "to" date: ' . print_r( $to, true ) );
+            // Invalid date format, skip
         }
     }
 
