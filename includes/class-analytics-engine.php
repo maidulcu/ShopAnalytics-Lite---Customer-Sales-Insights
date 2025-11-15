@@ -5,20 +5,23 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class ShopAnalytics_Engine {
 
+    // Order statuses constant to avoid hardcoding throughout
+    const ORDER_STATUSES = array( 'wc-completed', 'wc-processing' );
+
     public function get_total_revenue( $from = null, $to = null ) {
         global $wpdb;
-
-        $order_statuses = array_map( 'esc_sql', [ 'wc-completed', 'wc-processing' ] );
 
         $query = $wpdb->prepare(
             "SELECT SUM(meta.meta_value)
             FROM {$wpdb->posts} AS posts
             INNER JOIN {$wpdb->postmeta} AS meta ON posts.ID = meta.post_id
             WHERE posts.post_type = 'shop_order'
-            AND posts.post_status IN ('" . implode( "','", $order_statuses ) . "')
+            AND posts.post_status IN (%s, %s)
             AND meta.meta_key = '_order_total'
             AND posts.post_date >= %s
             AND posts.post_date <= %s",
+            self::ORDER_STATUSES[0],
+            self::ORDER_STATUSES[1],
             $from ? gmdate( 'Y-m-d 00:00:00', strtotime( $from ) ) : '1970-01-01 00:00:00',
             $to ? gmdate( 'Y-m-d 23:59:59', strtotime( $to ) ) : gmdate( 'Y-m-d H:i:s' )
         );
@@ -31,15 +34,15 @@ class ShopAnalytics_Engine {
     public function get_total_orders( $from = null, $to = null ) {
         global $wpdb;
 
-        $order_statuses = array_map( 'esc_sql', [ 'wc-completed', 'wc-processing' ] );
-
         $query = $wpdb->prepare(
             "SELECT COUNT(ID)
             FROM {$wpdb->posts}
             WHERE post_type = 'shop_order'
-            AND post_status IN ('" . implode( "','", $order_statuses ) . "')
+            AND post_status IN (%s, %s)
             AND post_date >= %s
             AND post_date <= %s",
+            self::ORDER_STATUSES[0],
+            self::ORDER_STATUSES[1],
             $from ? gmdate( 'Y-m-d 00:00:00', strtotime( $from ) ) : '1970-01-01 00:00:00',
             $to ? gmdate( 'Y-m-d 23:59:59', strtotime( $to ) ) : gmdate( 'Y-m-d H:i:s' )
         );
@@ -62,19 +65,19 @@ class ShopAnalytics_Engine {
     public function get_repeat_purchase_rate( $from = null, $to = null ) {
         global $wpdb;
 
-        $order_statuses = array_map( 'esc_sql', [ 'wc-completed', 'wc-processing' ] );
-
         $query = $wpdb->prepare(
             "SELECT meta.meta_value as customer_id, COUNT(posts.ID) as order_count
             FROM {$wpdb->posts} AS posts
             INNER JOIN {$wpdb->postmeta} AS meta ON posts.ID = meta.post_id
             WHERE posts.post_type = 'shop_order'
-            AND posts.post_status IN ('" . implode( "','", $order_statuses ) . "')
+            AND posts.post_status IN (%s, %s)
             AND meta.meta_key = '_customer_user'
             AND meta.meta_value > 0
             AND posts.post_date >= %s
             AND posts.post_date <= %s
             GROUP BY meta.meta_value",
+            self::ORDER_STATUSES[0],
+            self::ORDER_STATUSES[1],
             $from ? gmdate( 'Y-m-d 00:00:00', strtotime( $from ) ) : '1970-01-01 00:00:00',
             $to ? gmdate( 'Y-m-d 23:59:59', strtotime( $to ) ) : gmdate( 'Y-m-d H:i:s' )
         );
@@ -104,8 +107,6 @@ class ShopAnalytics_Engine {
     public function get_top_customers( $limit = 10, $from = null, $to = null ) {
         global $wpdb;
 
-        $order_statuses = array_map( 'esc_sql', [ 'wc-completed', 'wc-processing' ] );
-
         $query = $wpdb->prepare(
             "SELECT
                 customer_meta.meta_value AS customer_id,
@@ -123,7 +124,7 @@ class ShopAnalytics_Engine {
             INNER JOIN {$wpdb->postmeta} AS email_meta ON posts.ID = email_meta.post_id AND email_meta.meta_key = '_billing_email'
             WHERE
                 posts.post_type = 'shop_order'
-                AND posts.post_status IN ('" . implode( "','", $order_statuses ) . "')
+                AND posts.post_status IN (%s, %s)
                 AND customer_meta.meta_value > 0
                 AND posts.post_date >= %s
                 AND posts.post_date <= %s
@@ -132,6 +133,8 @@ class ShopAnalytics_Engine {
             ORDER BY
                 total_spent DESC
             LIMIT %d",
+            self::ORDER_STATUSES[0],
+            self::ORDER_STATUSES[1],
             $from ? gmdate( 'Y-m-d 00:00:00', strtotime( $from ) ) : '1970-01-01 00:00:00',
             $to ? gmdate( 'Y-m-d 23:59:59', strtotime( $to ) ) : gmdate( 'Y-m-d H:i:s' ),
             absint( $limit )
@@ -151,8 +154,6 @@ class ShopAnalytics_Engine {
     public function get_sales_by_product( $from = null, $to = null ) {
         global $wpdb;
 
-        $order_statuses = array_map( 'esc_sql', [ 'wc-completed', 'wc-processing' ] );
-
         $query = $wpdb->prepare(
             "SELECT
                 p_id_meta.meta_value AS product_id,
@@ -168,13 +169,15 @@ class ShopAnalytics_Engine {
             WHERE
                 oi.order_item_type = 'line_item'
                 AND p.post_type = 'shop_order'
-                AND p.post_status IN ('" . implode( "','", $order_statuses ) . "')
+                AND p.post_status IN (%s, %s)
                 AND p.post_date >= %s
                 AND p.post_date <= %s
             GROUP BY
                 p_id_meta.meta_value
             ORDER BY
                 total DESC",
+            self::ORDER_STATUSES[0],
+            self::ORDER_STATUSES[1],
             $from ? gmdate( 'Y-m-d 00:00:00', strtotime( $from ) ) : '1970-01-01 00:00:00',
             $to ? gmdate( 'Y-m-d 23:59:59', strtotime( $to ) ) : gmdate( 'Y-m-d H:i:s' )
         );
@@ -195,7 +198,6 @@ class ShopAnalytics_Engine {
         }
 
         global $wpdb;
-        $order_statuses = array_map( 'esc_sql', [ 'wc-completed', 'wc-processing' ] );
 
         $total = $wpdb->get_var( $wpdb->prepare(
             "SELECT SUM(total_meta.meta_value)
@@ -203,10 +205,12 @@ class ShopAnalytics_Engine {
             INNER JOIN {$wpdb->postmeta} AS customer_meta ON posts.ID = customer_meta.post_id
             INNER JOIN {$wpdb->postmeta} AS total_meta ON posts.ID = total_meta.post_id
             WHERE posts.post_type = 'shop_order'
-            AND posts.post_status IN ('" . implode( "','", $order_statuses ) . "')
+            AND posts.post_status IN (%s, %s)
             AND customer_meta.meta_key = '_customer_user'
             AND customer_meta.meta_value = %d
             AND total_meta.meta_key = '_order_total'",
+            self::ORDER_STATUSES[0],
+            self::ORDER_STATUSES[1],
             $customer_id
         ) );
 
@@ -215,8 +219,6 @@ class ShopAnalytics_Engine {
 
     public function get_sales_by_category( $from = null, $to = null ) {
         global $wpdb;
-
-        $order_statuses = array_map( 'esc_sql', [ 'wc-completed', 'wc-processing' ] );
 
         $query = $wpdb->prepare(
             "SELECT
@@ -233,13 +235,15 @@ class ShopAnalytics_Engine {
             WHERE
                 oi.order_item_type = 'line_item'
                 AND p.post_type = 'shop_order'
-                AND p.post_status IN ('" . implode( "','", $order_statuses ) . "')
+                AND p.post_status IN (%s, %s)
                 AND p.post_date >= %s
                 AND p.post_date <= %s
             GROUP BY
                 terms.term_id
             ORDER BY
                 total_sales DESC",
+            self::ORDER_STATUSES[0],
+            self::ORDER_STATUSES[1],
             $from ? gmdate( 'Y-m-d 00:00:00', strtotime( $from ) ) : '1970-01-01 00:00:00',
             $to ? gmdate( 'Y-m-d 23:59:59', strtotime( $to ) ) : gmdate( 'Y-m-d H:i:s' )
         );

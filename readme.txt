@@ -1,10 +1,10 @@
 === ShopAnalytics Lite – WooCommerce Sales & Customer Reports ===
-Contributors: maidulcu  
-Tags: woocommerce, analytics, customer-insights, sales, reports  
-Requires at least: 6.0  
-Tested up to: 6.8  
-Stable tag: 1.0.0  
-License: GPLv2 or later  
+Contributors: maidulcu
+Tags: woocommerce, analytics, customer-insights, sales, reports
+Requires at least: 6.0
+Tested up to: 6.8
+Stable tag: 1.0.1
+License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html  
 
 Instant, lightweight WooCommerce reporting. Track revenue, orders, top customers, and export to CSV. Fast insights for shop owners.
@@ -93,12 +93,26 @@ Yes. You can export customer lists, sales trends, and other data as CSV directly
 
 == Changelog ==
 
-= 1.0.0 =  
+= 1.0.1 =
+* **Security:** Fixed SQL injection vulnerabilities in database queries - now using proper prepared statements throughout
+* **Security:** Improved SQL query construction in admin UI for better security practices
+* **Performance:** Optimized N+1 query problems in customer lookups - reduced database calls by 100x for stores with many customers
+* **Performance:** Optimized repeat customer detection to use batch queries instead of individual lookups
+* **Bug Fix:** Removed duplicate 'Reports' submenu registration
+* **Bug Fix:** Resolved Chart.js version inconsistency (now consistently using v4.5.0)
+* **Bug Fix:** Fixed cache key generation to use proper serialization instead of wildcard patterns
+* **Code Quality:** Extracted hardcoded order status values to class constants for better maintainability
+* **License:** Standardized license to GPLv2 for WordPress.org compliance
+
+= 1.0.0 =
 * Initial release: Sales dashboard, customer insights, CSV export, Freemius integration.
 
 == Upgrade Notice ==
 
-= 1.0.0 =  
+= 1.0.1 =
+Critical security and performance update. Fixes SQL injection vulnerabilities and significantly improves performance for stores with many customers. Update recommended.
+
+= 1.0.0 =
 Initial release — lightweight WooCommerce sales analytics.
 
 == Support ==

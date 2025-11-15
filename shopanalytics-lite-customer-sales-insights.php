@@ -2,9 +2,9 @@
 /**
  * Plugin Name: ShopAnalytics Lite - Customer & Sales Insights
  * Description: Basic WooCommerce customer and sales insights plugin with Pro upgrade via Freemius.
- * Version:     1.0.0
+ * Version:     1.0.1
  * Author:      maidulcu
- * Author URI:  
+ * Author URI:
  * Text Domain: shopanalytics-lite-customer-sales-insights
  * Requires Plugins: woocommerce
  * Domain Path: /languages
@@ -32,7 +32,7 @@ if ( ! defined( 'SHOPANALYTICS_LITE_URL' ) ) {
 	define( 'SHOPANALYTICS_LITE_URL', plugin_dir_url( SHOPANALYTICS_LITE_FILE ) );
 }
 if ( ! defined( 'SHOPANALYTICS_LITE_VERSION' ) ) {
-	define( 'SHOPANALYTICS_LITE_VERSION', '1.0.0' );
+	define( 'SHOPANALYTICS_LITE_VERSION', '1.0.1' );
 }
 
 

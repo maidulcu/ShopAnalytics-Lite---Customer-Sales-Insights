@@ -26,7 +26,7 @@ class ShopAnalytics_Admin_UI {
             'shopanalytics-chartjs',
              SHOPANALYTICS_LITE_URL . 'assets/js/chart.min.js',
             [],
-            '4.4.0',
+            '4.5.0',
             true
         );
         wp_enqueue_script( 'shopanalytics-chartjs' );
@@ -131,15 +131,6 @@ class ShopAnalytics_Admin_UI {
             'manage_woocommerce',
             'shopanalytics-products',
             [ $this, 'render_top_products' ]
-        );
-
-        add_submenu_page(
-            'shopanalytics-lite-customer-sales-insights',
-            __( 'Reports', 'shopanalytics-lite-customer-sales-insights' ),
-            __( 'Reports', 'shopanalytics-lite-customer-sales-insights' ),
-            'manage_woocommerce',
-            'shopanalytics-reports',
-            [ $this, 'render_reports' ]
         );
 
         add_submenu_page(
@@ -421,18 +412,45 @@ class ShopAnalytics_Admin_UI {
 
             $monthly_orders[$current->format('M Y')] = count($orders);
 
-            // Repeat customer count
-            $repeat_customers = [];
-            foreach ( $orders as $order_id ) {
-                $order = wc_get_order($order_id);
-                if ( ! $order || ! method_exists( $order, 'get_customer_id' ) ) {
-                    continue;
-                }
-                $customer_id = $order->get_customer_id();
-                if ( $customer_id && wc_get_customer_order_count($customer_id) > 1 ) {
-                    $repeat_customers[$customer_id] = true;
+            // Repeat customer count - Optimized to avoid N+1 queries
+            $customer_ids = array();
+            foreach ( $orders as $order ) {
+                if ( is_object( $order ) && method_exists( $order, 'get_customer_id' ) ) {
+                    $customer_id = $order->get_customer_id();
+                    if ( $customer_id ) {
+                        $customer_ids[] = $customer_id;
+                    }
                 }
             }
+
+            // Batch query to get order counts for all customers
+            $repeat_customers = array();
+            if ( ! empty( $customer_ids ) ) {
+                global $wpdb;
+                $customer_ids_placeholders = implode( ',', array_fill( 0, count( array_unique( $customer_ids ) ), '%d' ) );
+                $order_counts_query = $wpdb->prepare(
+                    "SELECT meta.meta_value as customer_id, COUNT(posts.ID) as order_count
+                    FROM {$wpdb->posts} AS posts
+                    INNER JOIN {$wpdb->postmeta} AS meta ON posts.ID = meta.post_id
+                    WHERE posts.post_type = 'shop_order'
+                    AND posts.post_status IN (%s, %s)
+                    AND meta.meta_key = '_customer_user'
+                    AND meta.meta_value IN ($customer_ids_placeholders)
+                    GROUP BY meta.meta_value",
+                    array_merge(
+                        array( ShopAnalytics_Engine::ORDER_STATUSES[0], ShopAnalytics_Engine::ORDER_STATUSES[1] ),
+                        array_unique( $customer_ids )
+                    )
+                );
+                $customer_order_counts = $wpdb->get_results( $order_counts_query, OBJECT_K );
+
+                foreach ( array_unique( $customer_ids ) as $customer_id ) {
+                    if ( isset( $customer_order_counts[ $customer_id ] ) && $customer_order_counts[ $customer_id ]->order_count > 1 ) {
+                        $repeat_customers[ $customer_id ] = true;
+                    }
+                }
+            }
+
             $monthly_repeat[$current->format('M Y')] = count($repeat_customers);
 
             $current->modify('+1 month');
@@ -1383,14 +1401,30 @@ class ShopAnalytics_Admin_UI {
         echo '</form>';
  
         $top_customers = $this->engine->get_top_customers( 100, $from_date, $to_date );
- 
+
+        // Optimize: Batch fetch all users to avoid N+1 query
+        $emails = array_column( $top_customers, 'email' );
+        $users_by_email = array();
+        if ( ! empty( $emails ) ) {
+            $users = get_users( array(
+                'search' => '*',
+                'search_columns' => array( 'user_email' ),
+                'number' => 100,
+            ) );
+            foreach ( $users as $user ) {
+                if ( in_array( $user->user_email, $emails, true ) ) {
+                    $users_by_email[ $user->user_email ] = $user;
+                }
+            }
+        }
+
         echo '<h2>' . esc_html__( '🏅 Top 100 Customers', 'shopanalytics-lite-customer-sales-insights' ) . '</h2>';
         echo '<table class="widefat fixed striped" style="margin-top:10px;">';
         echo '<thead><tr><th>' . esc_html__( 'Name', 'shopanalytics-lite-customer-sales-insights' ) . '</th><th>' . esc_html__( 'Email', 'shopanalytics-lite-customer-sales-insights' ) . '</th><th>' . esc_html__( 'Orders', 'shopanalytics-lite-customer-sales-insights' ) . '</th><th>' . esc_html__( 'Total Spent', 'shopanalytics-lite-customer-sales-insights' ) . '</th><th>' . esc_html__( 'Average Order', 'shopanalytics-lite-customer-sales-insights' ) . '</th><th>' . esc_html__( 'CLV', 'shopanalytics-lite-customer-sales-insights' ) . '</th><th>' . esc_html__( 'Customer Since', 'shopanalytics-lite-customer-sales-insights' ) . '</th></tr></thead><tbody>';
- 
+
         foreach ( $top_customers as $cust ) {
             $average_order = $cust['orders'] > 0 ? $cust['total_spent'] / $cust['orders'] : 0;
-            $user = get_user_by( 'email', $cust['email'] );
+            $user = isset( $users_by_email[ $cust['email'] ] ) ? $users_by_email[ $cust['email'] ] : null;
         $registered = $user ? gmdate( 'Y-m-d', strtotime( $user->user_registered ) ) : 'N/A';
  
             echo '<tr>';
@@ -1647,19 +1681,36 @@ class ShopAnalytics_Admin_UI {
             
             global $wpdb;
             $table_name = $wpdb->prefix . 'shopanalytics_logs';
-            $where = "WHERE 1=1";
+
+            // Build WHERE conditions properly
+            $where_conditions = array( '1=1' );
+            $where_values = array();
+
             if ( isset($_GET['log_user_id']) && $_GET['log_user_id'] !== '' ) {
                 $user_id = intval(wp_unslash($_GET['log_user_id']));
-                $where .= $wpdb->prepare(" AND user_id = %d", $user_id);
+                $where_conditions[] = 'user_id = %d';
+                $where_values[] = $user_id;
             }
             if ( isset($_GET['log_keyword']) && $_GET['log_keyword'] !== '' ) {
                 $keyword = sanitize_text_field(wp_unslash($_GET['log_keyword']));
-                $where .= $wpdb->prepare(" AND event LIKE %s", '%' . $wpdb->esc_like($keyword) . '%');
+                $where_conditions[] = 'event LIKE %s';
+                $where_values[] = '%' . $wpdb->esc_like($keyword) . '%';
             }
-            $cache_key = 'shopanalytics_logs_export_' . md5($where);
+
+            $where_clause = implode( ' AND ', $where_conditions );
+            $cache_key = 'shopanalytics_logs_export_' . md5( serialize( $where_values ) );
             $logs = wp_cache_get($cache_key, 'shopanalytics');
+
             if (false === $logs) {
-                $logs = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}shopanalytics_logs $where ORDER BY created_at DESC" );
+                if ( ! empty( $where_values ) ) {
+                    $query = $wpdb->prepare(
+                        "SELECT * FROM {$wpdb->prefix}shopanalytics_logs WHERE $where_clause ORDER BY created_at DESC",
+                        $where_values
+                    );
+                } else {
+                    $query = "SELECT * FROM {$wpdb->prefix}shopanalytics_logs WHERE 1=1 ORDER BY created_at DESC";
+                }
+                $logs = $wpdb->get_results( $query );
                 wp_cache_set($cache_key, $logs, 'shopanalytics', 300);
             }
             header('Content-Type: text/csv');
@@ -1734,17 +1785,34 @@ class ShopAnalytics_Admin_UI {
  
         global $wpdb;
         $table_name = $wpdb->prefix . 'shopanalytics_logs';
-        $where = "WHERE 1=1";
+
+        // Build WHERE conditions properly
+        $where_conditions = array( '1=1' );
+        $where_values = array();
+
         if ( $filter_user_id ) {
-            $where .= $wpdb->prepare(" AND user_id = %d", $filter_user_id);
+            $where_conditions[] = 'user_id = %d';
+            $where_values[] = $filter_user_id;
         }
         if ( $filter_keyword ) {
-            $where .= $wpdb->prepare(" AND event LIKE %s", '%' . $wpdb->esc_like($filter_keyword) . '%');
+            $where_conditions[] = 'event LIKE %s';
+            $where_values[] = '%' . $wpdb->esc_like($filter_keyword) . '%';
         }
-        $cache_key = 'shopanalytics_logs_view_' . md5($where);
+
+        $where_clause = implode( ' AND ', $where_conditions );
+        $cache_key = 'shopanalytics_logs_view_' . md5( serialize( $where_values ) );
         $logs = wp_cache_get($cache_key, 'shopanalytics');
+
         if (false === $logs) {
-            $logs = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}shopanalytics_logs $where ORDER BY created_at DESC LIMIT 100" );
+            if ( ! empty( $where_values ) ) {
+                $query = $wpdb->prepare(
+                    "SELECT * FROM {$wpdb->prefix}shopanalytics_logs WHERE $where_clause ORDER BY created_at DESC LIMIT 100",
+                    $where_values
+                );
+            } else {
+                $query = "SELECT * FROM {$wpdb->prefix}shopanalytics_logs WHERE 1=1 ORDER BY created_at DESC LIMIT 100";
+            }
+            $logs = $wpdb->get_results( $query );
             wp_cache_set($cache_key, $logs, 'shopanalytics', 300);
         }
  
